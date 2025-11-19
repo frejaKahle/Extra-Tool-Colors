@@ -12,20 +12,99 @@ using System.Reflection;
 using System.Reflection.Emit;
 using TeamCherry.NestedFadeGroup;
 using UnityEngine;
+using UnityEngine.U2D;
 using UnityEngine.UI;
 using static InventoryItemManager;
 using static InventoryItemToolManager;
 using static SteelSoulQuestSpot;
+using static System.Net.Mime.MediaTypeNames;
 
 
 namespace ExtraToolColors
 {
+    public struct ChangedSlot
+    {
+        public ToolItemType OriginalType;
+        public int Occurance;
+        public ToolItemType NewType;
+        public ChangedSlot(ToolItemType origninalType, int occurance, ToolItemType newType)
+        {
+            OriginalType = origninalType;
+            Occurance = occurance;
+            NewType = newType;
+        }
+    }
+    public struct ChangedSlotList
+    {
+        public List<ChangedSlot> slots;
+
+        public ToolItemType Match(ToolItemType originalType, int occurances)
+        {
+            IEnumerable<ChangedSlot> filtered = slots.Where(slot => slot.OriginalType == originalType && slot.Occurance == occurances);
+            return filtered.Count() > 0 ? filtered.First().NewType : originalType;
+        }
+        public ToolItemType MatchAndPop(ToolItemType originalType, int occurances)
+        {
+            IEnumerable<ChangedSlot> filtered = slots.Where(slot => slot.OriginalType == originalType && slot.Occurance == occurances);
+            if (filtered.Count() > 0)
+            {
+                ChangedSlot slot = filtered.First();
+                slots.Remove(slot);
+                return slot.NewType;
+            }
+            return originalType;
+        }
+        public ChangedSlotList(ToolItemType[] originalItemTypes, int[] occurances, ToolItemType[] newItemTypes)
+        {
+            slots = new List<ChangedSlot>();
+            int max = Math.Min(Math.Min(originalItemTypes.Length, occurances.Length), newItemTypes.Length);
+            for (int i = 0; i < max; i++)
+            {
+                slots.Add(new ChangedSlot(originalItemTypes[i], occurances[i], newItemTypes[i]));
+            }
+        }
+        public void ReplaceOrAdd(ToolItemType originalType, int occurance, ToolItemType newType)
+        {
+            int idx = slots.FindIndex(slot => slot.OriginalType == originalType && slot.Occurance == occurance);
+            if (idx >= 0) slots.RemoveAt(idx);
+            slots.Add(new ChangedSlot(originalType, occurance, newType));
+        }
+    }
+    public struct SlotIconChanger
+    {
+        private readonly InventoryToolCrestSlot slot;
+        private NestedFadeGroupSpriteRenderer slotIcon;
+        private AttackToolBinding attackBinding;
+        public ToolItemType Type => slot.Type;
+        public bool SetSprite(Dictionary<AttackToolBinding, Sprite> sprite)
+        {
+            if (slot == null) return false;
+            if (!slot.isActiveAndEnabled || slot.EquippedItem || slot.IsLocked) return true;
+            if (!(bool)slotIcon) slotIcon = Traverse.Create(slot).Field("slotTypeIcon").GetValue<NestedFadeGroupSpriteRenderer>();
+            slotIcon.Sprite = sprite[attackBinding];
+            return true;
+        }
+        public SlotIconChanger(InventoryToolCrestSlot Slot, AttackToolBinding? AttackBinding)
+        {
+            slot = Slot;
+            slotIcon = Traverse.Create(slot).Field("slotTypeIcon").GetValue<NestedFadeGroupSpriteRenderer>();
+            attackBinding = AttackBinding == null ? AttackToolBinding.Neutral : (AttackToolBinding)AttackBinding;
+        }
+        public int InList(List<SlotIconChanger> list)
+        {
+            var s = slot;
+            return list.FindIndex(changer => changer.slot == s);
+        }
+    }
+
     [BepInPlugin("com.archdodo.ExtraToolColors", "Extra Tool Colors", "0.0.1")]
     public class ExtraToolColors : BaseUnityPlugin
     {
         static readonly ToolItemType Green = (ToolItemType)4, Purple = (ToolItemType)5, Orange = (ToolItemType)6, Pink = (ToolItemType)7;
+        static readonly ToolItemType[] extraTypes = { Green, Purple, Orange, Pink };
+        static readonly string[] toolItemTypeNames = {"Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
 
-        private static readonly Color[] toolTypeColors = { new Color(0.4f, 1.0f, 0.4f, 1.0f), new Color(0.8f, 0.4f, 1.0f, 1.0f), new Color(1.0f, 0.5f, 0.25f, 1.0f), new Color(0.95f, 0.54f, 0.68f, 1.0f) };
+        private static readonly Color[] toolTypeColors = { new Color(0.3f, 1.0f, 0.3f, 1.0f), new Color(0.8f, 0.4f, 1.0f, 1.0f), new Color(1.0f, 0.5f, 0.1f, 1.0f), new Color(0.95f, 0.54f, 0.68f, 1.0f) };
 
         // Defines edges on a graph of (int)ToolItemType nodes 
         // See the method ToolCompatability for an explanation of why this is the way it is
@@ -35,21 +114,29 @@ namespace ExtraToolColors
             new List<int> { 4, 6 },
             new List<int> { 7 },
             new List<int> { 1, 2, 5, 6 },
-            new List<int> { 0, 1, 4 },
-            new List<int> { 0, 2, 4 },
-            new List<int> { 0, 3 }
+            new List<int> { 0, 1, 4, 6, 7 },
+            new List<int> { 0, 2, 4, 5, 7 },
+            new List<int> { 0, 3, 5, 6 }
         };
         public static List<int> AdditionalAttackTypes { get; private set; } = new List<int> { 5, 6, 7 };
 
         public static List<int> AttackOnlyTypes { get; private set; } = new List<int> { 0, 3, 7 };
 
-        private static AssetBundle lshBundle;
+        private static AssetBundle spriteBundle;
 
         internal static ManualLogSource Log;
 
-        private static GameObject[] ExtraHeaders;
+        private static Sprite[] ExtraHeadersSprites;
 
         readonly static Harmony harmony = new Harmony("com.archdodo.ExtraToolColors");
+
+        public static Dictionary<string, int> ChangedTools = new Dictionary<string, int>() { { "Barbed Wire", 6 }, { "Sprintmaster", 4 }, { "WebShot Forge", 7 }, { "WebShot Weaver", 7 }, { "Webshot Architect", 7 }, { "Thief Claw", 5 }, { "Silk Bomb", 7 } };
+        public static Dictionary<string, ToolItemType> OriginalTypes { get; private set; } = new Dictionary<string, ToolItemType> { };
+
+        public static List<SlotIconChanger> SlotIcons { get; private set; } = new List<SlotIconChanger>();
+
+        
+
         public static bool ToolCompatability(ToolItemType type1, ToolItemType type2)
         {
             int t1 = (int)type1;
@@ -62,10 +149,12 @@ namespace ExtraToolColors
             // Get all possible tool types within a single step from the start and check if the second type is in the list
             return ToolCompatabilityGragh[t1].Contains(t2);
         }
+        /*
         public static List<InventoryItemTool> GetListItemsExtraColorsPatch(InventoryToolCrestSlot slot, InventoryItemGrid toolList)
         {
+            Log.LogInfo("Getting List Items: " + toolList.name);
             return toolList.GetListItems((InventoryItemTool toolItem) => ToolCompatability(toolItem.ToolType, slot.Type));
-        }
+        }*/
         public static int ExtraColorsGetAvailableSlotCount(IEnumerable<InventoryToolCrestSlot> slots, ToolItemType toolType, bool checkEmpty)
         {
             return slots.Count((slot) => !slot.IsLocked && ToolCompatability(slot.Type, toolType) && (!checkEmpty || slot.EquippedItem == null));
@@ -83,55 +172,79 @@ namespace ExtraToolColors
         {
             return slots.Count((slot) => !slot.IsLocked && slot.Type == toolType && (!checkEmpty || slot.EquippedItem == null));
         }
-        public static ToolItemType GetNewToolItemType(ToolItem tool)
+        public static ToolItemType GetOldToolItemType(ToolItem tool)
         {
             if (tool is ToolItemSkill) return ToolItemType.Skill;
             if (tool.Type == Pink) return ToolItemType.Red;
             return OriginalTypes.ContainsKey(tool.name) ? OriginalTypes[tool.name] : tool.Type;
         }
 
+        public static Dictionary<string, ChangedSlotList> ChangedSlots = new Dictionary<string, ChangedSlotList>() {
+            { "Hunter", new ChangedSlotList(new ToolItemType[]{ ToolItemType.Blue, ToolItemType.Yellow}, new int[]{ 2, 2 }, new ToolItemType[] { Green, Green }) },
+            { "Reaper", new ChangedSlotList(new ToolItemType[] { ToolItemType.Blue, ToolItemType.Yellow, ToolItemType.Red, ToolItemType.Red, ToolItemType.Skill}, new int[] {2, 2, 1, 2, 1 }, new ToolItemType[] { Green, Green, Purple, Orange, Pink}) },
+            { "Wanderer", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
+            { "Warrior", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
+            { "Witch", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
+            { "Toolmaster", new ChangedSlotList(new ToolItemType[]{ ToolItemType.Red, ToolItemType.Red}, new int[]{ 2, 3 }, new ToolItemType[] { Purple, Orange }) },
+            { "Spell", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) }
+        };
+        public static Dictionary<string, ToolItemType[]> OriginalSlots { get; private set; } = new Dictionary<string, ToolItemType[]>();
+
+        public static bool ChangeHunterUpgradesWithBase = true;
+
+        public static Dictionary<ToolItemType, Dictionary<AttackToolBinding, Sprite>> ExtraColorsSlotSprites { get; private set; }
+
         readonly static Expression<Func<ToolItemType, ToolItemType, bool>> m_ToolCompatability = (type1, type2) => ToolCompatability(type1, type2);
-        readonly static Expression<Func<InventoryToolCrestSlot, InventoryItemGrid, List<InventoryItemTool>>> m_GetListItemsPatch = (slot, toolList) => GetListItemsExtraColorsPatch(slot, toolList);
-        readonly static Expression<Func<ToolItem, ToolItemType>> m_GetNewToolItemType = (tool) => GetNewToolItemType(tool);
+        //readonly static Expression<Func<InventoryToolCrestSlot, InventoryItemGrid, List<InventoryItemTool>>> m_GetListItemsPatch = (slot, toolList) => GetListItemsExtraColorsPatch(slot, toolList);
+        readonly static Expression<Func<ToolItem, ToolItemType>> m_GetOldToolItemType = (tool) => GetOldToolItemType(tool);
         private void Awake()
         {
-            HarmonyFileLog.Enabled = true;
-            harmony.PatchAll(typeof(ExtraToolColors));
+            if (ChangeHunterUpgradesWithBase)
+            {
+                ChangedSlots.Add("Hunter_v2", ChangedSlots["Hunter"]);
+                ChangedSlots.Add("Hunter_v3", ChangedSlots["Hunter"]);
+            }
             Logger.LogInfo("Extra Tool Colors loaded and initialized");
             Log = Logger;
-            LoadHeadersFromAssetBundle();
+            LoadSpritesFromAssetBundle();
+            HarmonyFileLog.Enabled = true;
+            harmony.PatchAll(typeof(ExtraToolColors));
         }
 
-        public static Dictionary<string, int> ChangedTools = new Dictionary<string, int>() { { "Barbed Wire", 6 }, { "Sprintmaster", 4 }, { "WebShot Forge", 7 }, { "WebShot Weaver", 7 }, { "Webshot Architect", 7 }, { "Thief Claw", 5 }, { "Silk Bomb", 7 } };
-        public static Dictionary<string, ToolItemType> OriginalTypes = new Dictionary<string, ToolItemType> { };
-        private static void LoadHeadersFromAssetBundle()
+        private void LateUpdate()
         {
-            if ((UnityEngine.Object)(object)lshBundle == null)
+            SlotIcons.Do(changer => changer.SetSprite(ExtraColorsSlotSprites[changer.Type]));
+        }
+
+        private static void LoadSpritesFromAssetBundle()
+        {
+            if ((UnityEngine.Object)(object)spriteBundle == null)
             {
-                string text = Path.Combine(Path.Combine(Paths.PluginPath, "Extra Tool Colors"), "list_section_header_sprites");
-                Log.LogInfo("Trying to load AssetBundle from: " + text);
-                lshBundle = AssetBundle.LoadFromFile(text);
-                if ((UnityEngine.Object)(object)lshBundle == null)
+                string text = Path.Combine(Path.Combine(Paths.PluginPath, "Extra Tool Colors"), "extra_tool_colors_sprites");
+                //Log.LogInfo("Loading AssetBundle from: " + text);
+                spriteBundle = AssetBundle.LoadFromFile(text);
+                if ((UnityEngine.Object)(object)spriteBundle == null)
                 {
-                    Log.LogError("Could not find assetbundle at: " + text);
+                    Log.LogError("Could not find AssetBundle at: " + text);
                     return;
                 }
+                //Log.LogInfo("Loaded AssetBundle : " + text);
+            }
+            SpriteAtlas atlas = spriteBundle.LoadAsset<SpriteAtlas>("Extra Colors Sprites");
+            Sprite LoadSprite(string name)
+            {
+                return atlas.GetSprite(name);
             }
 
-            GameObject GreenPrefab = lshBundle.LoadAsset<GameObject>("GreenListHeaderPrefab"),
-                PurplePrefab = lshBundle.LoadAsset<GameObject>("PurpleListHeaderPrefab"),
-                OrangePrefab = lshBundle.LoadAsset<GameObject>("OrangeListHeaderPrefab"),
-                PinkPrefab = lshBundle.LoadAsset<GameObject>("PinkListHeaderPrefab");
-            DontDestroyOnLoad(GreenPrefab);
-            DontDestroyOnLoad(PurplePrefab);
-            DontDestroyOnLoad(OrangePrefab);
-            DontDestroyOnLoad(PinkPrefab);
-            if (GreenPrefab == null || PurplePrefab == null || OrangePrefab == null || PinkPrefab == null)
-            {
-                Log.LogError("Could not load all sprites");
-                return;
-            }
-            ExtraHeaders = new GameObject[] { GreenPrefab, PurplePrefab, OrangePrefab, PinkPrefab };
+            ExtraHeadersSprites = new Sprite[4]{ LoadSprite("GreenListHeader"), LoadSprite("PurpleListHeader"), LoadSprite("OrangeListHeader"), LoadSprite("PinkListHeader") };
+            //Log.LogInfo("HeaderSprites: " + ExtraHeadersSprites[0].ToString() + ", " + ExtraHeadersSprites[1].ToString() + ", " + ExtraHeadersSprites[2].ToString() + ", " + ExtraHeadersSprites[3].ToString());
+
+            ExtraColorsSlotSprites = new Dictionary<ToolItemType, Dictionary<AttackToolBinding, Sprite>>() { 
+                {Green, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Green Slot") }, { AttackToolBinding.Up, LoadSprite("Green Slot") } , { AttackToolBinding.Down, LoadSprite("Green Slot") } } },
+                {Purple, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Purple Slot") }, { AttackToolBinding.Up, LoadSprite("Purple Slot Up") }, { AttackToolBinding.Down, LoadSprite("Purple Slot Down") } } }, 
+                {Orange, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Orange Slot") }, { AttackToolBinding.Up, LoadSprite("Orange Slot Up") }, { AttackToolBinding.Down, LoadSprite("Orange Slot Down") } } }, 
+                {Pink, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Pink Slot") }, { AttackToolBinding.Up, LoadSprite("Pink Slot Up") }, { AttackToolBinding.Down, LoadSprite("Pink Slot Down") } } }
+            };
         }
 
         [HarmonyPrefix]
@@ -166,55 +279,130 @@ namespace ExtraToolColors
                     Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(newSlotAnimatorControllers);
                 }
                 Traverse.Create(newItemData).Field("type").SetValue((ToolItemType)newType);
-                Log.LogInfo("Loaded " + newItemData.name + " as type " + newItemData.Type);
             }
         }
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "GetGridSections")]
-        public static void GetGridSectionsPrefix(InventoryItemToolManager __instance, NestedFadeGroupSpriteRenderer[] ___listSectionHeaders)
+        public static void GetGridSectionsPrefix(ref NestedFadeGroupSpriteRenderer[] ___listSectionHeaders)
         {
             if (___listSectionHeaders.Length < 5)
             {
-                NestedFadeGroup Parent = ___listSectionHeaders[0].ParentGroup;
                 NestedFadeGroupSpriteRenderer GreenSection = Instantiate(___listSectionHeaders[3], ___listSectionHeaders[0].transform.parent),
                     OrangeSection = Instantiate(___listSectionHeaders[2], ___listSectionHeaders[0].transform.parent),
                     PurpleSection = Instantiate(___listSectionHeaders[3], ___listSectionHeaders[0].transform.parent),
                     PinkSection = Instantiate(___listSectionHeaders[3], ___listSectionHeaders[0].transform.parent);
-                NestedFadeGroupSpriteRenderer[] newListSectionHeaders = { ___listSectionHeaders[0], ___listSectionHeaders[1], ___listSectionHeaders[2], ___listSectionHeaders[3], GreenSection, PurpleSection, OrangeSection, PinkSection };
-                Log.LogInfo("Header info scale: " + ___listSectionHeaders[0].Sprite.spriteAtlasTextureScale);
+                NestedFadeGroupSpriteRenderer[] newListSectionHeaders = { null, null, null, null, GreenSection, PurpleSection, OrangeSection, PinkSection };
+                ___listSectionHeaders.CopyTo(newListSectionHeaders, 0);
+                //Log.LogInfo("Header info scale: " + ___listSectionHeaders[0].Sprite.spriteAtlasTextureScale);
 
                 for (int i = 0; i < 4; i++)
                 {
-                    Traverse t = Traverse.Create(newListSectionHeaders[i + 4]);
-                    SpriteRenderer newRenderer = Instantiate(ExtraHeaders[i].GetComponent<SpriteRenderer>(), newListSectionHeaders[i + 4].transform) as SpriteRenderer;
-                    newListSectionHeaders[i + 4].transform.SetScaleMatching(1.6f);
-                    newListSectionHeaders[i + 4].Sprite = newRenderer.sprite;
-
-                    t.Field("spriteRenderer").SetValue(newRenderer);
-
-                    newListSectionHeaders[i + 4].BaseColor = toolTypeColors[i];
-
-                    newListSectionHeaders[i + 4].SetParent(Parent);
+                    newListSectionHeaders[i + 4].transform.SetScaleMatching(1.5f);
+                    newListSectionHeaders[i + 4].Sprite = ExtraHeadersSprites[i];
+                    //Log.LogInfo("New List Section Header: " + newListSectionHeaders[i + 4].name);
                 }
-                Traverse.Create(__instance).Field("listSectionHeaders").SetValue(newListSectionHeaders);
+                ___listSectionHeaders = newListSectionHeaders;
             }
         }
         [HarmonyPostfix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "GetGridSections")]
         public static void GetGridSectionsPostfix(InventoryItemGrid ___toolList, NestedFadeGroupSpriteRenderer[] ___listSectionHeaders, List<InventoryItemTool> selectableItems, ref List<InventoryItemGrid.GridSection> __result)
         {
-            List<InventoryItemGrid.GridSection> newList = new List<InventoryItemGrid.GridSection>(4);
+            List<InventoryItemGrid.GridSection> newSections = new List<InventoryItemGrid.GridSection>();
             for (int i = 4; i < 8; i++)
             {
-                newList.Add(new InventoryItemGrid.GridSection
+
+                newSections.Add(new InventoryItemGrid.GridSection
                 {
                     Header = ___listSectionHeaders[i].transform,
-                    Items = selectableItems.Where((InventoryItemTool item) => item.ToolType == (ToolItemType)i).Cast<InventoryItemSelectableDirectional>().ToList()
+                    Items = selectableItems.Where((item) => item.ToolType == (ToolItemType)i).Cast<InventoryItemSelectableDirectional>().ToList()
                 });
             }
-            __result.AddRange(newList);
-            ___toolList.Setup(__result);
+            ___toolList.Setup(newSections);
+            __result.AddRange(newSections);
         }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(InventoryToolCrest), "Setup")]
+        public static void CrestSetupPrefix(InventoryToolCrest __instance, ToolCrest newCrestData, ref InventoryToolCrestSlot[] ___templateSlots)
+        {
+            
+            // Ensure TOOL_TYPES array contains new types
+            var t = Traverse.CreateWithType("InventoryToolCrest").Field("TOOL_TYPES");
+            ToolItemType[] T() { return t.GetValue() as ToolItemType[]; }
+            if (T().Length < 5)
+            {
+                ToolItemType[] t2 = new ToolItemType[8];
+                T().CopyTo(t2, 0);
+                extraTypes.CopyTo(t2, 4);
+                t.SetValue(t2);
+            }
+
+            // Ensure templateSlots array contains new template slots corresponding to the new types
+            var t_TemplateSlots = Traverse.Create(__instance).Field("templateSlots");
+            if ((t_TemplateSlots.GetValue() as InventoryToolCrestSlot[]).Length < 5)
+            {
+                InventoryToolCrestSlot[] tSlots = new InventoryToolCrestSlot[8];
+                ___templateSlots.CopyTo(tSlots, 0);
+                for (int i = 4; i < 8; i++)
+                {
+                    int j = i == 7 ? 3 : (i == 4 ? 1 : 0);
+                    tSlots[i] = Instantiate(tSlots[j], tSlots[j].transform.parent);
+                    tSlots[i].name = $"{toolItemTypeNames[i]} Slot";
+                    ToolCrest.SlotInfo si = tSlots[i].SlotInfo;
+                    si.Type = extraTypes[i - 4];
+                    tSlots[i].SlotInfo = si;
+                    Traverse.Create(tSlots[i]).Field("slotTypeSprite").SetValue(ExtraColorsSlotSprites[(ToolItemType)i][AttackToolBinding.Neutral]);
+                    var animator = Traverse.Create(tSlots[i]).Field("slotAnimator").GetValue<Animator>();
+                    Log.LogInfo(animator.runtimeAnimatorController.animationClips[0].ToString());
+                }
+                ___templateSlots = tSlots;
+            }
+
+
+            // Change original slots to be new ones
+            int[] slotCounts = new int[8];
+            if (ChangedSlots.ContainsKey(newCrestData.name))
+            {
+                ToolItemType[] slotTypes(ToolCrest.SlotInfo[] Slots)
+                {
+                    ToolItemType[] types = new ToolItemType[Slots.Length];
+                    for (int i = 0; i < types.Length; i++)
+                    {
+                        types[i] = Slots[i].Type;
+                    }
+                    return types;
+                }
+                ToolItemType[] slots = slotTypes(newCrestData.Slots);
+                if (!OriginalSlots.ContainsKey(newCrestData.name))
+                    OriginalSlots.Add(newCrestData.name, slotTypes(newCrestData.Slots));
+                else
+                    slots = OriginalSlots[newCrestData.name];
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    slotCounts[(int)slots[i]]++;
+                    newCrestData.Slots[i].Type = ChangedSlots[newCrestData.name].Match(slots[i], slotCounts[(int)slots[i]]);
+                }
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(InventoryToolCrest), "Setup")]
+        public static void AddSlotsToChangerList(List<InventoryToolCrestSlot> ___activeSlots, List<ToolCrest.SlotInfo> ___activeSlotsData)
+        {
+            for (int i = 0; i < ___activeSlots.Count; i++)
+            {
+                if ((int)___activeSlots[i].Type > 3)
+                {
+                    var iconChanger = new SlotIconChanger(___activeSlots[i], ___activeSlotsData[i].AttackBinding);
+                    var index = iconChanger.InList(SlotIcons);
+                    if (index >= 0) SlotIcons.RemoveAt(index);
+                    SlotIcons.Add(iconChanger);
+                }
+            }
+        }
+        
         [HarmonyPrefix]
         [HarmonyPatch(typeof(ToolItemList), "SortByType")]
         public static bool SortByTypePrefix(ToolItemList __instance)
@@ -396,7 +584,7 @@ namespace ExtraToolColors
             if (!(___toolList == null))
             {
                 List<InventoryItemTool> listItems = ___toolList.GetListItems((InventoryItemTool toolItem) => ToolCompatability(toolItem.ToolType, slot.Type));
-                List<InventoryItemTool> list = listItems.Where((InventoryItemTool toolItem) => !IsToolEquipped(toolItem.ItemData)).ToList();
+                List<InventoryItemTool> list = listItems.Where((toolItem) => !IsToolEquipped(toolItem.ItemData)).ToList();
                 InventoryItemTool inventoryItemTool = null;
                 if (list.Count > 0)
                 {
@@ -463,9 +651,40 @@ namespace ExtraToolColors
         }
         [HarmonyTranspiler]
         [HarmonyPatch(typeof(InventoryItemToolManager), "EndSelection")]
-        public static IEnumerable<CodeInstruction> ToolItemLoadTypeTranspiler(IEnumerable<CodeInstruction> instructions)
+        public static IEnumerable<CodeInstruction> InventoryToolItemLoadTypeTranspiler(IEnumerable<CodeInstruction> instructions)
         {
             var c = CodeInstruction.Call("InventoryItemTool:get_ToolType");
+            var cv = c.Clone();
+            cv.opcode = OpCodes.Callvirt;
+            var codeMatcher = new CodeMatcher(instructions);
+            while (codeMatcher.MatchStartForward(new CodeMatch(c), new CodeMatch(OpCodes.Beq)).IsValid)
+                codeMatcher.Advance(1)
+                    .InsertAndAdvance(CodeInstruction.Call(m_ToolCompatability))
+                    .SetOpcodeAndAdvance(OpCodes.Brtrue);
+            codeMatcher.Start();
+            while (codeMatcher.MatchStartForward(new CodeMatch(cv), new CodeMatch(OpCodes.Beq)).IsValid)
+                codeMatcher.Advance(1)
+                    .InsertAndAdvance(CodeInstruction.Call(m_ToolCompatability))
+                    .SetOpcodeAndAdvance(OpCodes.Brtrue);
+            codeMatcher.Start();
+            while (codeMatcher.MatchStartForward(new CodeMatch(c), new CodeMatch(OpCodes.Bne_Un)).IsValid)
+                codeMatcher.Advance(1)
+                    .InsertAndAdvance(CodeInstruction.Call(m_ToolCompatability))
+                    .SetOpcodeAndAdvance(OpCodes.Brfalse);
+            codeMatcher.Start();
+            while (codeMatcher.MatchStartForward(new CodeMatch(cv), new CodeMatch(OpCodes.Bne_Un)).IsValid)
+                codeMatcher.Advance(1)
+                    .InsertAndAdvance(CodeInstruction.Call(m_ToolCompatability))
+                    .SetOpcodeAndAdvance(OpCodes.Brfalse);
+            //codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
+            return codeMatcher.InstructionEnumeration();
+        }
+
+        [HarmonyTranspiler]
+        [HarmonyPatch(typeof(InventoryItemTool), "UpdateEquippedDisplay", typeof(bool))]
+        public static IEnumerable<CodeInstruction> ToolItemLoadTypeTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var c = CodeInstruction.Call("ToolItem:get_Type");
             var cv = c.Clone();
             cv.opcode = OpCodes.Callvirt;
             var codeMatcher = new CodeMatcher(instructions);
@@ -525,7 +744,7 @@ namespace ExtraToolColors
         public static void SlotGetNextSelectablePostfix(SelectionDirection direction, ref InventoryItemSelectable __result, InventoryToolCrestSlot __instance)
         {
             var manager = Traverse.Create(__instance).Field("manager").GetValue() as InventoryItemToolManager;
-            if (manager.EquipState == EquipStates.PlaceTool)
+            if (manager.EquipState == EquipStates.PlaceTool && !(__instance.Selectables[(int)direction] == __result && __instance.FallbackSelectables[(int)direction].Selectables.Any((fallback) => fallback != null && fallback.gameObject.activeInHierarchy)))
             {
                 var autoNav = Traverse.Create(__instance).Field("autoNavGroup").GetValue() as InventoryAutoNavGroup;
                 var selected = Traverse.Create(manager).Field("selectedBeforePickup").GetValue() as InventoryItemTool;
@@ -570,14 +789,14 @@ namespace ExtraToolColors
             while (codeMatcher.MatchStartForward(new CodeMatch(c)).IsValid)
             {
                 codeMatcher.RemoveInstruction()
-                    .InsertAndAdvance(CodeInstruction.Call(m_GetNewToolItemType));
+                    .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));
             }
             codeMatcher.Start();
             c.opcode = OpCodes.Callvirt;
             while (codeMatcher.MatchStartForward(new CodeMatch(c)).IsValid)
             {
                 codeMatcher.RemoveInstruction()
-                    .InsertAndAdvance(CodeInstruction.Call(m_GetNewToolItemType));
+                    .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));
             }
             //codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
             return codeMatcher.InstructionEnumeration();
