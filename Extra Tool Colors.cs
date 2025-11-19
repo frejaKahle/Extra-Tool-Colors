@@ -74,7 +74,7 @@ namespace ExtraToolColors
     {
         private readonly InventoryToolCrestSlot slot;
         private NestedFadeGroupSpriteRenderer slotIcon;
-        private AttackToolBinding attackBinding;
+        private readonly AttackToolBinding attackBinding;
         public ToolItemType Type => slot.Type;
         public bool SetSprite(Dictionary<AttackToolBinding, Sprite> sprite)
         {
@@ -391,6 +391,7 @@ namespace ExtraToolColors
         [HarmonyPatch(typeof(InventoryToolCrest), "Setup")]
         public static void AddSlotsToChangerList(List<InventoryToolCrestSlot> ___activeSlots, List<ToolCrest.SlotInfo> ___activeSlotsData)
         {
+            // Add new slots of new types to list that changes their sprites to the new ones in LateUpdate, after any aniators run
             for (int i = 0; i < ___activeSlots.Count; i++)
             {
                 if ((int)___activeSlots[i].Type > 3)
@@ -435,6 +436,14 @@ namespace ExtraToolColors
         {
             __result = __result || AdditionalAttackTypes.Contains((int)type);
         }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(ToolItemManager), nameof(ToolItemManager.GetBoundAttackTool), typeof(AttackToolBinding), typeof(ToolEquippedReadSource))]
+        public static void GetBoundAttackToolPostfix(ToolItem __result)
+        {
+            if (__result != null && AdditionalAttackTypes.Contains((int)__result.Type)) __result = null;
+        }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "TryPickupOrPlaceTool")]
         public static bool TryPickupOrPlaceToolPrefix(ToolItem tool, InventoryItemToolManager __instance, InventoryToolCrestList ___crestList, InventoryFloatingToolSlots ___extraSlots, ref InventoryItemSelectable ___selectedBeforePickup, ref bool __result)
