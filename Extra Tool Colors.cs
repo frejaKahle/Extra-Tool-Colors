@@ -18,6 +18,7 @@ using static InventoryItemManager;
 using static InventoryItemToolManager;
 using static SteelSoulQuestSpot;
 using static System.Net.Mime.MediaTypeNames;
+using static ToolCrestsData;
 
 
 namespace ExtraToolColors
@@ -439,10 +440,28 @@ namespace ExtraToolColors
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(ToolItemManager), nameof(ToolItemManager.GetBoundAttackTool), typeof(AttackToolBinding), typeof(ToolEquippedReadSource))]
-        public static void GetBoundAttackToolPostfix(ToolItem __result)
+        public static void GetBoundAttackToolPostfix(ref ToolItem __result)
         {
-            if (__result != null && AdditionalAttackTypes.Contains((int)__result.Type)) __result = null;
+            if (__result != null && !AttackOnlyTypes.Contains((int)__result.Type)) __result = null;
         }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(RadialHudIcon), "UpdateDisplay")]
+        public static void SetToolHudIconColor(RadialHudIcon __instance, ref UnityEngine.UI.Image ___radialImage)
+        {
+            if (__instance is ToolHudIcon && (bool)(__instance as ToolHudIcon).CurrentTool)
+            {
+                var crestList = FindFirstObjectByType<InventoryToolCrestList>(FindObjectsInactive.Include);
+                if ((bool)crestList)
+                {
+                    if (crestList.GetSlots().Any(slot => slot.EquippedItem == (__instance as ToolHudIcon).CurrentTool))
+                    {
+                        ___radialImage.color = UI.GetToolTypeColor(crestList.GetSlots().First(slot => slot.EquippedItem == (__instance as ToolHudIcon).CurrentTool).Type);
+                    }
+                }
+            }
+        }
+
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "TryPickupOrPlaceTool")]
@@ -791,6 +810,9 @@ namespace ExtraToolColors
         [HarmonyTranspiler]
         [HarmonyPatch(typeof(HeroController), "ThrowTool")]
         [HarmonyPatch(typeof(HeroController), "CanThrowTool", typeof(ToolItem), typeof(AttackToolBinding), typeof(bool))]
+        [HarmonyPatch(typeof(ToolHudIcon), nameof(ToolHudIcon.GetIsEmpty))]
+        [HarmonyPatch(typeof(ToolHudIcon), "GetAmounts")]
+        [HarmonyPatch(typeof(ToolHudIcon), "OnSilkSpoolRefreshed")]
         public static IEnumerable<CodeInstruction> ToolGetTypeTranspiler(IEnumerable<CodeInstruction> instructions)
         {
             var c = CodeInstruction.Call("ToolItem:get_Type");
