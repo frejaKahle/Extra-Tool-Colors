@@ -101,9 +101,9 @@ namespace ExtraToolColors
     [BepInPlugin("com.archdodo.ExtraToolColors", "Extra Tool Colors", "0.0.1")]
     public class ExtraToolColors : BaseUnityPlugin
     {
-        static readonly ToolItemType Green = (ToolItemType)4, Purple = (ToolItemType)5, Orange = (ToolItemType)6, Pink = (ToolItemType)7;
-        static readonly ToolItemType[] extraTypes = { Green, Purple, Orange, Pink };
-        static readonly string[] toolItemTypeNames = {"Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
+        public static readonly ToolItemType Green = (ToolItemType)4, Purple = (ToolItemType)5, Orange = (ToolItemType)6, Pink = (ToolItemType)7;
+        public static readonly ToolItemType[] extraTypes = { Green, Purple, Orange, Pink };
+        public static readonly string[] toolItemTypeNames = {"Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
 
         private static readonly Color[] toolTypeColors = { new Color(0.3f, 1.0f, 0.3f, 1.0f), new Color(0.8f, 0.4f, 1.0f, 1.0f), new Color(1.0f, 0.5f, 0.1f, 1.0f), new Color(0.95f, 0.54f, 0.68f, 1.0f) };
 
@@ -121,7 +121,7 @@ namespace ExtraToolColors
         };
         public static List<int> AdditionalAttackTypes { get; private set; } = new List<int> { 5, 6, 7 };
 
-        public static List<int> AttackOnlyTypes { get; private set; } = new List<int> { 0, 3, 7 };
+        public static List<ToolItemType> AttackOnlyTypes { get; private set; } = new List<ToolItemType> { ToolItemType.Red, ToolItemType.Skill, Pink };
 
         private static AssetBundle spriteBundle;
 
@@ -131,7 +131,7 @@ namespace ExtraToolColors
 
         readonly static Harmony harmony = new Harmony("com.archdodo.ExtraToolColors");
 
-        public static Dictionary<string, int> ChangedTools = new Dictionary<string, int>() { { "Barbed Wire", 6 }, { "Sprintmaster", 4 }, { "WebShot Forge", 7 }, { "WebShot Weaver", 7 }, { "Webshot Architect", 7 }, { "Thief Claw", 5 }, { "Silk Bomb", 7 } };
+        public static Dictionary<string, ToolItemType> ChangedTools;
         public static Dictionary<string, ToolItemType> OriginalTypes { get; private set; } = new Dictionary<string, ToolItemType> { };
 
         public static List<SlotIconChanger> SlotIcons { get; private set; } = new List<SlotIconChanger>();
@@ -198,13 +198,22 @@ namespace ExtraToolColors
         readonly static Expression<Func<ToolItemType, ToolItemType, bool>> m_ToolCompatability = (type1, type2) => ToolCompatability(type1, type2);
         //readonly static Expression<Func<InventoryToolCrestSlot, InventoryItemGrid, List<InventoryItemTool>>> m_GetListItemsPatch = (slot, toolList) => GetListItemsExtraColorsPatch(slot, toolList);
         readonly static Expression<Func<ToolItem, ToolItemType>> m_GetOldToolItemType = (tool) => GetOldToolItemType(tool);
+
+        internal static ConfigManager configManager;
         private void Awake()
         {
+            
+            configManager = new ConfigManager(Config);
+            configManager.Init();
+            Logger.LogInfo("Blue and Yellow: " + ConfigManager.ConvertStringToToolType("Blue and Yellow"));
+            ChangedTools = configManager.GetAllEntries();
+
             if (ChangeHunterUpgradesWithBase)
             {
                 ChangedSlots.Add("Hunter_v2", ChangedSlots["Hunter"]);
                 ChangedSlots.Add("Hunter_v3", ChangedSlots["Hunter"]);
             }
+
             Logger.LogInfo("Extra Tool Colors loaded and initialized");
             Log = Logger;
             LoadSpritesFromAssetBundle();
@@ -266,8 +275,8 @@ namespace ExtraToolColors
                 {
                     OriginalTypes.Add(newItemData.name, newItemData.Type);
                 }
-                int newType = ChangedTools[newItemData.name];
-                if (AttackOnlyTypes.Contains((int)newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
+                ToolItemType newType = ChangedTools[newItemData.name];
+                if (AttackOnlyTypes.Contains(newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
 
                 if (___slotAnimatorControllers.Length < 5)
                 {
@@ -354,8 +363,6 @@ namespace ExtraToolColors
                     si.Type = extraTypes[i - 4];
                     tSlots[i].SlotInfo = si;
                     Traverse.Create(tSlots[i]).Field("slotTypeSprite").SetValue(ExtraColorsSlotSprites[(ToolItemType)i][AttackToolBinding.Neutral]);
-                    var animator = Traverse.Create(tSlots[i]).Field("slotAnimator").GetValue<Animator>();
-                    Log.LogInfo(animator.runtimeAnimatorController.animationClips[0].ToString());
                 }
                 ___templateSlots = tSlots;
             }
@@ -442,7 +449,7 @@ namespace ExtraToolColors
         [HarmonyPatch(typeof(ToolItemManager), nameof(ToolItemManager.GetBoundAttackTool), typeof(AttackToolBinding), typeof(ToolEquippedReadSource))]
         public static void GetBoundAttackToolPostfix(ref ToolItem __result)
         {
-            if (__result != null && !AttackOnlyTypes.Contains((int)__result.Type)) __result = null;
+            if (__result != null && !AttackOnlyTypes.Contains(__result.Type)) __result = null;
         }
 
         [HarmonyPostfix]
