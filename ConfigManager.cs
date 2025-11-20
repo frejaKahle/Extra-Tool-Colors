@@ -1,10 +1,12 @@
 ﻿using BepInEx.Configuration;
+using InControl;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using UnityStandardAssets.ImageEffects;
 
 namespace ExtraToolColors
 {
@@ -14,10 +16,13 @@ namespace ExtraToolColors
         public ConfigEntry<string> setting;
         public List<string> affectedTools;
 
-        public ModifyMultipleToolsSetting(string section, ConfigFile file, string booleanSettingName, IEnumerable<string> affectedSettings, string options, string defaultValue = "NOSETTING")
+        public ModifyMultipleToolsSetting(string section, ConfigFile file, string booleanSettingName, IEnumerable<string> affectedSettings, string optionsString, AcceptableValueList<string> options, string defaultValue = "NOSETTING", EventHandler settingChangedEvent = null)
         {
             applySetting = file.Bind(section, "Modify_All_Instances_of_" + ConfigManager.ProcessSettingName(booleanSettingName) + "_as_One", true, "Setting to determine whether the following setting affects all instances of " + booleanSettingName + " (true, false)");
-            setting = file.Bind(section, "Modify_Instances_of_" + ConfigManager.ProcessSettingName(booleanSettingName) + "_to_be", defaultValue, "Setting to apply to all instances of " + booleanSettingName + " if previous setting is set to true " + options);
+            applySetting.SettingChanged += settingChangedEvent;
+            setting = file.Bind(section, "Modify_Instances_of_" + ConfigManager.ProcessSettingName(booleanSettingName) + "_to_be", defaultValue, 
+                new ConfigDescription("Setting to apply to all instances of " + booleanSettingName + " if previous setting is set to true " + optionsString, options));
+            setting.SettingChanged += settingChangedEvent;
             affectedTools = affectedSettings.ToList();
         }
     }
@@ -58,10 +63,13 @@ namespace ExtraToolColors
             "Magnetite Dice", "Scuttlebrace", "Wallcling",
             "Musician Charm", "Sprintmaster", "Thief Charm"
         };
+        public static AcceptableValueList<string> attackToolOptions = new AcceptableValueList<string>("White", "Red", "Pink");
 
-        public static string attackToolOptions = "(Skill, Red, Pink)";
+        public static string attackToolOptionsString = "(White, Red, Pink)";
 
-        public static string toolOptions = "(Skill, Red, Blue, Yellow, Green, Purple, Orange, Pink)";
+        public static AcceptableValueList<string> toolOptions = new AcceptableValueList<string>("White", "Red", "Blue", "Yellow", "Green", "Purple", "Orange", "Pink");
+
+        public static string toolOptionsString = "(White, Red, Blue, Yellow, Green, Purple, Orange, Pink)";
 
         public ConfigFile file;
 
@@ -71,12 +79,12 @@ namespace ExtraToolColors
 
         public List<ModifyMultipleToolsSetting> modifyMultiples;
 
-        public List<Tuple<string, List<string>, string, string>> ModifyMultipleAsOne { get; private set; } = new List<Tuple<string, List<string>, string, string>>()
+        public List<Tuple<string, List<string>, string, AcceptableValueList<string>, string>> ModifyMultipleAsOne { get; private set; } = new List<Tuple<string, List<string>, string, AcceptableValueList<string>, string>>()
         {
-            Tuple.Create( "WebShot", new List<string>{"WebShot Weaver", "WebShot Architect", "WebShot Forge" }, attackToolOptions, "Red" ),
-            Tuple.Create( "Mosscreep", new List<string>{"Mosscreep Tool 1", "Mosscreep Tool 2" }, toolOptions , "Blue"),
-            Tuple.Create( "Curve Claws", new List<string>{"Curve Claws", "Curve Claws Upgraded" }, attackToolOptions, "Red" ),
-            Tuple.Create( "Dazzle Bind", new List<string>{ "Dazzle Bind", "Dazzle Bind Upgraded" }, toolOptions, "Blue" )
+            Tuple.Create( "WebShot", new List<string>{"WebShot Weaver", "WebShot Architect", "WebShot Forge" }, attackToolOptionsString, attackToolOptions, "Red" ),
+            Tuple.Create( "Mosscreep", new List<string>{"Mosscreep Tool 1", "Mosscreep Tool 2" }, toolOptionsString, toolOptions, "Blue"),
+            Tuple.Create( "Curve Claws", new List<string>{"Curve Claws", "Curve Claws Upgraded" }, attackToolOptionsString, attackToolOptions, "Red" ),
+            Tuple.Create( "Dazzle Bind", new List<string>{ "Dazzle Bind", "Dazzle Bind Upgraded" }, toolOptionsString, toolOptions, "Blue" )
         };
 
         public ConfigEntry<bool> modifyMosscreepsAsOne;
@@ -87,10 +95,13 @@ namespace ExtraToolColors
 
         public List<ConfigEntry<string>> toolTypes;
 
+        public Dictionary<string, ToolItemType> changes;
+
         public ConfigManager(ConfigFile configFile, string section = "ExtraToolColorsTransmog")
         {
             file = configFile;
             title = section;
+            changes = new Dictionary<string, ToolItemType>();
         }
 
         public void Init()
@@ -99,26 +110,81 @@ namespace ExtraToolColors
             toolSettings = new Dictionary<string, ConfigEntry<string>>();
             foreach(var tuple in ModifyMultipleAsOne)
             {
-                modifyMultiples.Add(new ModifyMultipleToolsSetting(title,file,tuple.Item1,tuple.Item2,tuple.Item3,tuple.Item4));
+                modifyMultiples.Add(new ModifyMultipleToolsSetting(title,file,tuple.Item1,tuple.Item2,tuple.Item3,tuple.Item4,tuple.Item5));
             }
 
             foreach (var toolname in internalSkillToolNames)
             {
-                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Skill", "Changes Tool Type of " + toolname + " to specified type" + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + attackToolOptions));
+                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "White", 
+                    new ConfigDescription( "Changes Tool Type of " + toolname + " to specified type " + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + attackToolOptionsString, attackToolOptions)));
+                toolSettings[toolname].SettingChanged += SingleSettingChangedEvent;
             }
             foreach (var toolname in internalRedToolNames)
             {
-                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Red", "Changes Tool Type of " + toolname + " to specified type" + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + attackToolOptions));
+                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Red",
+                    new ConfigDescription("Changes Tool Type of " + toolname + " to specified type " + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + attackToolOptionsString, attackToolOptions)));
+                toolSettings[toolname].SettingChanged += SingleSettingChangedEvent;
             }
             foreach (var toolname in internalBlueToolNames)
             {
-                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Blue", "Changes Tool Type of " + toolname + " to specified type" + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + toolOptions));
+                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Blue",
+                    new ConfigDescription("Changes Tool Type of " + toolname + " to specified type " + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + toolOptionsString, toolOptions)));
+                toolSettings[toolname].SettingChanged += SingleSettingChangedEvent;
             }
             foreach (var toolname in internalYellowToolNames)
             {
-                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Yellow", "Changes Tool Type of " + toolname + " to specified type" + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + toolOptions));
+                toolSettings.Add(toolname, file.Bind(title, ProcessSettingName(toolname), "Yellow",
+                    new ConfigDescription("Changes Tool Type of " + toolname + " to specified type " + (!modifyMultiples.Any(mmts => mmts.affectedTools.Contains(toolname)) ? "if not set by its modify multiple setting " : " ") + toolOptionsString, toolOptions)));
+                toolSettings[toolname].SettingChanged += SingleSettingChangedEvent;
+            }
+            changes = GetAllEntries();
+        }
+        protected virtual void SingleSettingChangedEvent(object sender, EventArgs e)
+        {
+            if (sender is ConfigEntry<string>)
+            {
+                Console.WriteLine("Yay");
+                var entry = sender as ConfigEntry<string>;
+                string key = UnProcessSettingName(entry.Definition.Key);
+                if (key != null)
+                {
+                    ToolItemType? type = GetEntryByName(key);
+                    if (type.HasValue)
+                    {
+                        if (!changes.ContainsKey(key))
+                            changes.Add(key, type.Value);
+                        else 
+                            changes[key] = type.Value;
+                    }
+                }
+            }
+            
+        }
+        protected virtual void MultipleSettingChangedEvent(object sender, EventArgs e)
+        {
+            if (sender is ConfigEntry<string> || sender is ConfigEntry<bool>) 
+            {
+                foreach (var multiple in modifyMultiples)
+                {
+                    if (multiple.setting == sender as ConfigEntry<string> || multiple.applySetting == sender as ConfigEntry<bool>)
+                    {
+                        foreach (string toolName in multiple.affectedTools)
+                        {
+                            ToolItemType? type = GetEntryByName(toolName);
+                            if (type.HasValue)
+                            {
+                                if (!changes.ContainsKey(toolName))
+                                    changes.Add(toolName, type.Value);
+                                else
+                                    changes[toolName] = type.Value;
+                            }
+                        }
+                        return;
+                    }
+                }   
             }
         }
+
         public Dictionary<string, ToolItemType> GetAllEntries()
         {
             var returnValue = new Dictionary<string, ToolItemType>();
@@ -157,6 +223,10 @@ namespace ExtraToolColors
         public static string ProcessSettingName(string settingName)
         {
             return settingName.Replace(' ', '_');
+        }
+        public static string UnProcessSettingName(string settingName)
+        {
+            return settingName.Replace('_', ' ');
         }
     }
 }

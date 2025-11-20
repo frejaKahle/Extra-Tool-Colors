@@ -131,7 +131,7 @@ namespace ExtraToolColors
 
         readonly static Harmony harmony = new Harmony("com.archdodo.ExtraToolColors");
 
-        public static Dictionary<string, ToolItemType> ChangedTools;
+        public static Dictionary<string, ToolItemType> ChangedTools => configManager.changes;
         public static Dictionary<string, ToolItemType> OriginalTypes { get; private set; } = new Dictionary<string, ToolItemType> { };
 
         public static List<SlotIconChanger> SlotIcons { get; private set; } = new List<SlotIconChanger>();
@@ -205,8 +205,6 @@ namespace ExtraToolColors
             
             configManager = new ConfigManager(Config);
             configManager.Init();
-            Logger.LogInfo("Blue and Yellow: " + ConfigManager.ConvertStringToToolType("Blue and Yellow"));
-            ChangedTools = configManager.GetAllEntries();
 
             if (ChangeHunterUpgradesWithBase)
             {
