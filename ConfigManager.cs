@@ -143,7 +143,6 @@ namespace ExtraToolColors
         {
             if (sender is ConfigEntry<string>)
             {
-                Console.WriteLine("Yay");
                 var entry = sender as ConfigEntry<string>;
                 string key = UnProcessSettingName(entry.Definition.Key);
                 if (key != null)
