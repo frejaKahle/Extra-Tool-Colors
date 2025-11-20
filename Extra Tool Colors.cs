@@ -21,9 +21,11 @@ using static System.Net.Mime.MediaTypeNames;
 using static ToolCrestsData;
 
 
+
+
 namespace ExtraToolColors
 {
-    public struct ChangedSlot
+public struct ChangedSlot
     {
         public ToolItemType OriginalType;
         public int Occurance;
@@ -175,19 +177,17 @@ namespace ExtraToolColors
         }
         public static ToolItemType GetOldToolItemType(ToolItem tool)
         {
-            if (tool is ToolItemSkill) return ToolItemType.Skill;
-            if (tool.Type == Pink) return ToolItemType.Red;
-            return OriginalTypes.ContainsKey(tool.name) ? OriginalTypes[tool.name] : tool.Type;
+            return OriginalTypes.ContainsKey(tool.name) ? OriginalTypes[tool.name] : (tool.Type == Pink ? (tool is ToolItemSkill ? ToolItemType.Skill : ToolItemType.Red) : tool.Type);
         }
 
         public static Dictionary<string, ChangedSlotList> ChangedSlots = new Dictionary<string, ChangedSlotList>() {
-            { "Hunter", new ChangedSlotList(new ToolItemType[]{ ToolItemType.Blue, ToolItemType.Yellow}, new int[]{ 2, 2 }, new ToolItemType[] { Green, Green }) },
-            { "Reaper", new ChangedSlotList(new ToolItemType[] { ToolItemType.Blue, ToolItemType.Yellow, ToolItemType.Red, ToolItemType.Red, ToolItemType.Skill}, new int[] {2, 2, 1, 2, 1 }, new ToolItemType[] { Green, Green, Purple, Orange, Pink}) },
-            { "Wanderer", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
-            { "Warrior", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
-            { "Witch", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) },
-            { "Toolmaster", new ChangedSlotList(new ToolItemType[]{ ToolItemType.Red, ToolItemType.Red}, new int[]{ 2, 3 }, new ToolItemType[] { Purple, Orange }) },
-            { "Spell", new ChangedSlotList(new ToolItemType[] { }, new int[] { }, new ToolItemType[] {}) }
+            { "Hunter", new ChangedSlotList( new ToolItemType[0], new int[0], new ToolItemType[0])},
+            { "Reaper", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) },
+            { "Wanderer", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) },
+            { "Warrior", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) },
+            { "Witch", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) },
+            { "Toolmaster", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) },
+            { "Spell", new ChangedSlotList(new ToolItemType[0], new int[0], new ToolItemType[0]) }
         };
         public static Dictionary<string, ToolItemType[]> OriginalSlots { get; private set; } = new Dictionary<string, ToolItemType[]>();
 

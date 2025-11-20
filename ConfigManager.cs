@@ -110,7 +110,7 @@ namespace ExtraToolColors
             toolSettings = new Dictionary<string, ConfigEntry<string>>();
             foreach(var tuple in ModifyMultipleAsOne)
             {
-                modifyMultiples.Add(new ModifyMultipleToolsSetting(title,file,tuple.Item1,tuple.Item2,tuple.Item3,tuple.Item4,tuple.Item5));
+                modifyMultiples.Add(new ModifyMultipleToolsSetting(title,file,tuple.Item1,tuple.Item2,tuple.Item3,tuple.Item4,tuple.Item5,MultipleSettingChangedEvent));
             }
 
             foreach (var toolname in internalSkillToolNames)
@@ -163,6 +163,7 @@ namespace ExtraToolColors
         {
             if (sender is ConfigEntry<string> || sender is ConfigEntry<bool>) 
             {
+                Console.WriteLine("yay");
                 foreach (var multiple in modifyMultiples)
                 {
                     if (multiple.setting == sender as ConfigEntry<string> || multiple.applySetting == sender as ConfigEntry<bool>)
