@@ -454,14 +454,14 @@ public struct ChangedSlot
         [HarmonyPatch(typeof(RadialHudIcon), "UpdateDisplay")]
         public static void SetToolHudIconColor(RadialHudIcon __instance, ref UnityEngine.UI.Image ___radialImage)
         {
-            if (__instance is ToolHudIcon && (bool)(__instance as ToolHudIcon).CurrentTool)
+            if (__instance is ToolHudIcon toolIcon && toolIcon.CurrentTool)
             {
                 var crestList = FindFirstObjectByType<InventoryToolCrestList>(FindObjectsInactive.Include);
                 if ((bool)crestList)
                 {
-                    if (crestList.GetSlots().Any(slot => slot.EquippedItem == (__instance as ToolHudIcon).CurrentTool))
+                    if (crestList.GetSlots().Any(slot => slot.EquippedItem == toolIcon.CurrentTool))
                     {
-                        ___radialImage.color = UI.GetToolTypeColor(crestList.GetSlots().First(slot => slot.EquippedItem == (__instance as ToolHudIcon).CurrentTool).Type);
+                        ___radialImage.color = UI.GetToolTypeColor(crestList.GetSlots().First(slot => slot.EquippedItem == toolIcon.CurrentTool).Type);
                     }
                 }
             }
@@ -639,13 +639,6 @@ public struct ChangedSlot
             }
             return false;
         }
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(ToolItem), "HasLimitedUses")]
-        public static void HasLimitedUsesPostfix(ToolItem __instance, ref bool __result)
-        {
-            // If a modder were to want to make a silk skill that is pink by default, they would need to make it with the ToolItemSkill class
-            __result = __result && !(__instance is ToolItemSkill);
-        }
 
         [HarmonyTranspiler]
         [HarmonyPatch(typeof(InventoryToolCrestSlot), "UpdateSlotDisplay")]
@@ -818,9 +811,12 @@ public struct ChangedSlot
         [HarmonyPatch(typeof(ToolHudIcon), nameof(ToolHudIcon.GetIsEmpty))]
         [HarmonyPatch(typeof(ToolHudIcon), "GetAmounts")]
         [HarmonyPatch(typeof(ToolHudIcon), "OnSilkSpoolRefreshed")]
-        public static IEnumerable<CodeInstruction> ToolGetTypeTranspiler(IEnumerable<CodeInstruction> instructions)
+        [HarmonyPatch(typeof(ToolHudIcon), "OnSilkSpoolRefreshed")]
+        [HarmonyPatch(typeof(ToolItem), "HasLimitedUses")]
+        public static IEnumerable<CodeInstruction> ToolGetOldTypeTranspiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
             var c = CodeInstruction.Call("ToolItem:get_Type");
+            var c2 = CodeInstruction.LoadField(typeof(ToolItem), "type");
             var codeMatcher = new CodeMatcher(instructions);
             while (codeMatcher.MatchStartForward(new CodeMatch(c)).IsValid)
             {
@@ -830,6 +826,18 @@ public struct ChangedSlot
             codeMatcher.Start();
             c.opcode = OpCodes.Callvirt;
             while (codeMatcher.MatchStartForward(new CodeMatch(c)).IsValid)
+            {
+                codeMatcher.RemoveInstruction()
+                    .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));
+            }
+            while (codeMatcher.MatchStartForward(new CodeMatch(c2)).IsValid)
+            {
+                codeMatcher.RemoveInstruction()
+                    .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));
+            }
+            codeMatcher.Start();
+            c.opcode = OpCodes.Callvirt;
+            while (codeMatcher.MatchStartForward(new CodeMatch(c2)).IsValid)
             {
                 codeMatcher.RemoveInstruction()
                     .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));

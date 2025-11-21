@@ -163,7 +163,6 @@ namespace ExtraToolColors
         {
             if (sender is ConfigEntry<string> || sender is ConfigEntry<bool>) 
             {
-                Console.WriteLine("yay");
                 foreach (var multiple in modifyMultiples)
                 {
                     if (multiple.setting == sender as ConfigEntry<string> || multiple.applySetting == sender as ConfigEntry<bool>)
