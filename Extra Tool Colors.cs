@@ -23,9 +23,11 @@ using static ToolCrestsData;
 
 
 
+
+
 namespace ExtraToolColors
 {
-public struct ChangedSlot
+    public struct ChangedSlot
     {
         public ToolItemType OriginalType;
         public int Occurance;
@@ -121,9 +123,9 @@ public struct ChangedSlot
             new List<int> { 0, 2, 4, 5, 7 },
             new List<int> { 0, 3, 5, 6 }
         };
-        public static List<int> AdditionalAttackTypes { get; private set; } = new List<int> { 5, 6, 7 };
+        public static readonly List<int> AdditionalAttackTypes = new List<int> { 5, 6, 7 };
 
-        public static List<ToolItemType> AttackOnlyTypes { get; private set; } = new List<ToolItemType> { ToolItemType.Red, ToolItemType.Skill, Pink };
+        public static readonly List<ToolItemType> AttackOnlyTypes = new List<ToolItemType> { ToolItemType.Red, ToolItemType.Skill, Pink };
 
         private static AssetBundle spriteBundle;
 
@@ -222,6 +224,20 @@ public struct ChangedSlot
         private void LateUpdate()
         {
             SlotIcons.Do(changer => changer.SetSprite(ExtraColorsSlotSprites[changer.Type]));
+            
+        }
+
+        private void OnDestroy()
+        {
+            configManager.file.Save();
+            configManager = null;
+
+            OriginalTypes.Clear();
+            SlotIcons.Clear();
+            //ChangedSlots.Clear();
+            spriteBundle = null;
+
+            harmony.UnpatchSelf();
         }
 
         private static void LoadSpritesFromAssetBundle()
@@ -813,7 +829,7 @@ public struct ChangedSlot
         [HarmonyPatch(typeof(ToolHudIcon), "OnSilkSpoolRefreshed")]
         [HarmonyPatch(typeof(ToolHudIcon), "OnSilkSpoolRefreshed")]
         [HarmonyPatch(typeof(ToolItem), "HasLimitedUses")]
-        public static IEnumerable<CodeInstruction> ToolGetOldTypeTranspiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+        public static IEnumerable<CodeInstruction> ToolGetOldTypeTranspiler(IEnumerable<CodeInstruction> instructions)
         {
             var c = CodeInstruction.Call("ToolItem:get_Type");
             var c2 = CodeInstruction.LoadField(typeof(ToolItem), "type");
