@@ -32,7 +32,7 @@ namespace ExtraToolColors
         public static List<string> internalSkillToolNames = new List<string>() {
             // Silk Skills
             "Silk Spear", "Thread Sphere", "Parry",
-            "Silk Charge", "Slik Bomb", "Silk Boss Needle" 
+            "Silk Charge", "Silk Bomb", "Silk Boss Needle" 
         };
 
         public static List<string> internalRedToolNames = new List<string>() {

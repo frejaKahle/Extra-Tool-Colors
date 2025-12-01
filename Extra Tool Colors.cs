@@ -301,13 +301,13 @@ namespace ExtraToolColors
         [HarmonyPatch(typeof(InventoryItemTool), "SetData")]
         public static void SetDataPrefix(ref ToolItem newItemData, InventoryItemTool __instance, RuntimeAnimatorController[] ___slotAnimatorControllers)
         {
-            if (ChangedTools.ContainsKey(newItemData.name))
+            if (GetChangedTools().ContainsKey(newItemData.name))
             {
                 if (!OriginalTypes.ContainsKey(newItemData.name))
                 {
                     OriginalTypes.Add(newItemData.name, newItemData.Type);
                 }
-                ToolItemType newType = ChangedTools[newItemData.name];
+                ToolItemType newType = GetChangedTools()[newItemData.name];
                 if (AttackOnlyTypes.Contains(newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
 
                 if (___slotAnimatorControllers.Length < 5)
