@@ -131,6 +131,29 @@ namespace ExtraToolColors
         readonly static Harmony harmony = new Harmony("com.archdodo.ExtraToolColors");
 
         public static Dictionary<string, ToolItemType> ChangedTools => configManager.changes;
+
+        public static Dictionary<string, ToolItemType> GetChangedTools()
+        {
+            // Postfix this if you're a modder
+            return configManager.changes;
+        }
+
+        /*
+        EXAMPLE POSTFIX:
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(ExtraToolColors.ExtraToolColors), nameof(ExtraToolColors.ExtraToolColors.GetChangedTools))]
+
+        public static void GetChangedToolsPostfix(ref Dictionary<string, ToolItemType> __result)
+        {
+            string toolName = "INSERT_INTERNAL_TOOL_NAME_HERE";
+            if (__result.ContainsKey(toolName))
+                __result[toolName] = ExtraToolColors.ExtraToolColors.Pink;
+            else
+                __result.Add(toolName, ExtraToolColors.ExtraToolColors.Pink);
+        }
+        */
+
         public static Dictionary<string, ToolItemType> OriginalTypes { get; private set; } = new Dictionary<string, ToolItemType> { };
 
         public static List<SlotIconChanger> SlotIcons { get; private set; } = new List<SlotIconChanger>();
@@ -860,13 +883,12 @@ namespace ExtraToolColors
         [HarmonyPatch(typeof(InventoryItemToolManager), "OnValidate")]
         public static IEnumerable<CodeInstruction> OnValidateTranspiler(IEnumerable<CodeInstruction> instructions)
         {
-
             var codeMatcher = new CodeMatcher(instructions);
             codeMatcher.MatchStartForward(
                 new CodeMatch(new CodeInstruction(OpCodes.Ldarg_0)),
                 new CodeMatch(CodeInstruction.LoadField(typeof(InventoryItemToolManager), "listSectionHeaders", true)));
             if (codeMatcher.Pos > 0) codeMatcher.RemoveInstructions(5);
-            codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
+            //codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
             return codeMatcher.InstructionEnumeration();
         }
     }
