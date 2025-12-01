@@ -297,10 +297,21 @@ namespace ExtraToolColors
             if (t > 3) { __result = toolTypeColors[t - 4]; return false; }
             return true;
         }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemTool), "SetData")]
         public static void SetDataPrefix(ref ToolItem newItemData, InventoryItemTool __instance, RuntimeAnimatorController[] ___slotAnimatorControllers)
         {
+            if (___slotAnimatorControllers.Length < 5)
+            {
+                RuntimeAnimatorController[] newSlotAnimatorControllers = new RuntimeAnimatorController[8];
+                ___slotAnimatorControllers.CopyTo(newSlotAnimatorControllers, 0);
+                for (int i = 0; i < 4; i++)
+                {
+                    newSlotAnimatorControllers[i + 4] = Instantiate(newSlotAnimatorControllers[i]);
+                }
+                Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(newSlotAnimatorControllers);
+            }
             if (GetChangedTools().ContainsKey(newItemData.name))
             {
                 if (!OriginalTypes.ContainsKey(newItemData.name))
@@ -309,20 +320,10 @@ namespace ExtraToolColors
                 }
                 ToolItemType newType = GetChangedTools()[newItemData.name];
                 if (AttackOnlyTypes.Contains(newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
-
-                if (___slotAnimatorControllers.Length < 5)
-                {
-                    RuntimeAnimatorController[] newSlotAnimatorControllers = new RuntimeAnimatorController[8];
-                    ___slotAnimatorControllers.CopyTo(newSlotAnimatorControllers, 0);
-                    for (int i = 0; i < 4; i++)
-                    {
-                        newSlotAnimatorControllers[i + 4] = Instantiate(newSlotAnimatorControllers[i]);
-                    }
-                    Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(newSlotAnimatorControllers);
-                }
                 Traverse.Create(newItemData).Field("type").SetValue((ToolItemType)newType);
             }
         }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "GetGridSections")]
         public static void GetGridSectionsPrefix(ref NestedFadeGroupSpriteRenderer[] ___listSectionHeaders)
