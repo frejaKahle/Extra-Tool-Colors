@@ -8,17 +8,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
 using System.Reflection.Emit;
 using TeamCherry.NestedFadeGroup;
 using UnityEngine;
 using UnityEngine.U2D;
-using UnityEngine.UI;
 using static InventoryItemManager;
 using static InventoryItemToolManager;
-using static SteelSoulQuestSpot;
-using static System.Net.Mime.MediaTypeNames;
-using static ToolCrestsData;
 
 
 
@@ -107,7 +102,7 @@ namespace ExtraToolColors
     {
         public static readonly ToolItemType Green = (ToolItemType)4, Purple = (ToolItemType)5, Orange = (ToolItemType)6, Pink = (ToolItemType)7;
         public static readonly ToolItemType[] extraTypes = { Green, Purple, Orange, Pink };
-        public static readonly string[] toolItemTypeNames = {"Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
+        public static readonly string[] toolItemTypeNames = { "Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
 
         private static readonly Color[] toolTypeColors = { new Color(0.3f, 1.0f, 0.3f, 1.0f), new Color(0.8f, 0.4f, 1.0f, 1.0f), new Color(1.0f, 0.5f, 0.1f, 1.0f), new Color(0.95f, 0.54f, 0.68f, 1.0f) };
 
@@ -140,7 +135,7 @@ namespace ExtraToolColors
 
         public static List<SlotIconChanger> SlotIcons { get; private set; } = new List<SlotIconChanger>();
 
-        
+
 
         public static bool ToolCompatability(ToolItemType type1, ToolItemType type2)
         {
@@ -204,7 +199,7 @@ namespace ExtraToolColors
         internal static ConfigManager configManager;
         private void Awake()
         {
-            
+
             configManager = new ConfigManager(Config);
             configManager.Init();
 
@@ -224,7 +219,7 @@ namespace ExtraToolColors
         private void LateUpdate()
         {
             SlotIcons.Do(changer => changer.SetSprite(ExtraColorsSlotSprites[changer.Type]));
-            
+
         }
 
         private void OnDestroy()
@@ -260,13 +255,13 @@ namespace ExtraToolColors
                 return atlas.GetSprite(name);
             }
 
-            ExtraHeadersSprites = new Sprite[4]{ LoadSprite("GreenListHeader"), LoadSprite("PurpleListHeader"), LoadSprite("OrangeListHeader"), LoadSprite("PinkListHeader") };
+            ExtraHeadersSprites = new Sprite[4] { LoadSprite("GreenListHeader"), LoadSprite("PurpleListHeader"), LoadSprite("OrangeListHeader"), LoadSprite("PinkListHeader") };
             //Log.LogInfo("HeaderSprites: " + ExtraHeadersSprites[0].ToString() + ", " + ExtraHeadersSprites[1].ToString() + ", " + ExtraHeadersSprites[2].ToString() + ", " + ExtraHeadersSprites[3].ToString());
 
-            ExtraColorsSlotSprites = new Dictionary<ToolItemType, Dictionary<AttackToolBinding, Sprite>>() { 
+            ExtraColorsSlotSprites = new Dictionary<ToolItemType, Dictionary<AttackToolBinding, Sprite>>() {
                 {Green, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Green Slot") }, { AttackToolBinding.Up, LoadSprite("Green Slot") } , { AttackToolBinding.Down, LoadSprite("Green Slot") } } },
-                {Purple, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Purple Slot") }, { AttackToolBinding.Up, LoadSprite("Purple Slot Up") }, { AttackToolBinding.Down, LoadSprite("Purple Slot Down") } } }, 
-                {Orange, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Orange Slot") }, { AttackToolBinding.Up, LoadSprite("Orange Slot Up") }, { AttackToolBinding.Down, LoadSprite("Orange Slot Down") } } }, 
+                {Purple, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Purple Slot") }, { AttackToolBinding.Up, LoadSprite("Purple Slot Up") }, { AttackToolBinding.Down, LoadSprite("Purple Slot Down") } } },
+                {Orange, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Orange Slot") }, { AttackToolBinding.Up, LoadSprite("Orange Slot Up") }, { AttackToolBinding.Down, LoadSprite("Orange Slot Down") } } },
                 {Pink, new Dictionary<AttackToolBinding, Sprite>() { { AttackToolBinding.Neutral, LoadSprite("Pink Slot") }, { AttackToolBinding.Up, LoadSprite("Pink Slot Up") }, { AttackToolBinding.Down, LoadSprite("Pink Slot Down") } } }
             };
         }
@@ -350,7 +345,7 @@ namespace ExtraToolColors
         [HarmonyPatch(typeof(InventoryToolCrest), "Setup")]
         public static void CrestSetupPrefix(InventoryToolCrest __instance, ToolCrest newCrestData, ref InventoryToolCrestSlot[] ___templateSlots)
         {
-            
+
             // Ensure TOOL_TYPES array contains new types
             var t = Traverse.CreateWithType("InventoryToolCrest").Field("TOOL_TYPES");
             ToolItemType[] T() { return t.GetValue() as ToolItemType[]; }
@@ -425,7 +420,7 @@ namespace ExtraToolColors
                 }
             }
         }
-        
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(ToolItemList), "SortByType")]
         public static bool SortByTypePrefix(ToolItemList __instance)
@@ -859,6 +854,19 @@ namespace ExtraToolColors
                     .InsertAndAdvance(CodeInstruction.Call(m_GetOldToolItemType));
             }
             //codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
+            return codeMatcher.InstructionEnumeration();
+        }
+        [HarmonyTranspiler]
+        [HarmonyPatch(typeof(InventoryItemToolManager), "OnValidate")]
+        public static IEnumerable<CodeInstruction> OnValidateTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+
+            var codeMatcher = new CodeMatcher(instructions);
+            codeMatcher.MatchStartForward(
+                new CodeMatch(new CodeInstruction(OpCodes.Ldarg_0)),
+                new CodeMatch(CodeInstruction.LoadField(typeof(InventoryItemToolManager), "listSectionHeaders", true)));
+            if (codeMatcher.Pos > 0) codeMatcher.RemoveInstructions(5);
+            codeMatcher.Instructions().Do(instr => Console.WriteLine("tpc  | " + instr.ToString()));
             return codeMatcher.InstructionEnumeration();
         }
     }
