@@ -177,6 +177,10 @@ namespace ExtraToolColors
                                 else
                                     changes[toolName] = type.Value;
                             }
+                            else if (changes.ContainsKey(toolName))
+                            {
+                                changes.Remove(toolName);
+                            }
                         }
                         return;
                     }
@@ -198,11 +202,12 @@ namespace ExtraToolColors
         public ToolItemType? GetEntryByName(string toolName)
         {
             if (!toolSettings.ContainsKey(toolName)) return null;
-            string value = toolSettings[toolName].Value;
             foreach (ModifyMultipleToolsSetting setting in modifyMultiples)
             {
-                if (setting.applySetting.Value && setting.affectedTools.Contains(toolName)) return ConvertStringToToolType(setting.setting.Value);
+                if (setting.applySetting.Value && setting.affectedTools.Contains(toolName) && setting.setting.Value != (string)setting.setting.DefaultValue) return ConvertStringToToolType(setting.setting.Value);
             }
+            string value = toolSettings[toolName].Value;
+            if (value == (string)toolSettings[toolName].DefaultValue) return null;
             return ConvertStringToToolType(value);
         }
 
