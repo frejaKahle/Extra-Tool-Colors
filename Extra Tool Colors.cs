@@ -257,6 +257,14 @@ namespace ExtraToolColors
 
             harmony.UnpatchSelf();
         }
+        public static void SetupCustomPinkTool(ToolItem tool, bool hasLimitedUses)
+        {
+            SetupCustomPinkTool(tool.name, hasLimitedUses);
+        }
+        public static void SetupCustomPinkTool(string toolName, bool hasLimitedUses)
+        {
+            OriginalTypes.Add(toolName, hasLimitedUses ? ToolItemType.Red : ToolItemType.Skill);
+        }
 
         private static void LoadSpritesFromAssetBundle()
         {
@@ -298,19 +306,23 @@ namespace ExtraToolColors
             return true;
         }
 
+        private static readonly  RuntimeAnimatorController[] toolSlotAnimatorControllers = new RuntimeAnimatorController[8];
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemTool), "SetData")]
         public static void SetDataPrefix(ref ToolItem newItemData, InventoryItemTool __instance, RuntimeAnimatorController[] ___slotAnimatorControllers)
         {
             if (___slotAnimatorControllers.Length < 5)
             {
-                RuntimeAnimatorController[] newSlotAnimatorControllers = new RuntimeAnimatorController[8];
-                ___slotAnimatorControllers.CopyTo(newSlotAnimatorControllers, 0);
-                for (int i = 0; i < 4; i++)
+                if (toolSlotAnimatorControllers[0] == null)
                 {
-                    newSlotAnimatorControllers[i + 4] = Instantiate(newSlotAnimatorControllers[i]);
+                    ___slotAnimatorControllers.CopyTo(toolSlotAnimatorControllers, 0);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        toolSlotAnimatorControllers[i + 4] = Instantiate(toolSlotAnimatorControllers[i]);
+                    }
                 }
-                Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(newSlotAnimatorControllers);
+                Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(toolSlotAnimatorControllers.Clone());
             }
             if (GetChangedTools().ContainsKey(newItemData.name))
             {
