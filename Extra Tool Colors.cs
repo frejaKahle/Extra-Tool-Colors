@@ -16,10 +16,6 @@ using static InventoryItemManager;
 using static InventoryItemToolManager;
 
 
-
-
-
-
 namespace ExtraToolColors
 {
     public struct ChangedSlot
@@ -97,9 +93,10 @@ namespace ExtraToolColors
         }
     }
 
-    [BepInPlugin("com.archdodo.ExtraToolColors", "Extra Tool Colors", "0.0.1")]
+    [BepInPlugin("com.archdodo.ExtraToolColors", "Extra Tool Colors", "1.0.3")]
     public class ExtraToolColors : BaseUnityPlugin
     {
+        public const int N_TYPES = 8;
         public static readonly ToolItemType Green = (ToolItemType)4, Purple = (ToolItemType)5, Orange = (ToolItemType)6, Pink = (ToolItemType)7;
         public static readonly ToolItemType[] extraTypes = { Green, Purple, Orange, Pink };
         public static readonly string[] toolItemTypeNames = { "Attack", "Defend", "Explore", "Skill", "Defend/Explore", "Attack/Defend", "Attack/Explore", "Attack/Skill" };
@@ -135,7 +132,7 @@ namespace ExtraToolColors
         public static Dictionary<string, ToolItemType> GetChangedTools()
         {
             // Postfix this if you're a modder
-            return configManager.changes;
+            return configManager.RealChanges;
         }
 
         /*
@@ -220,9 +217,10 @@ namespace ExtraToolColors
         readonly static Expression<Func<ToolItem, ToolItemType>> m_GetOldToolItemType = (tool) => GetOldToolItemType(tool);
 
         internal static ConfigManager configManager;
+        public static PluginInfo PInfo { get; private set; }
         private void Awake()
         {
-
+            PInfo = Info;
             configManager = new ConfigManager(Config);
             configManager.Init();
 
@@ -270,14 +268,14 @@ namespace ExtraToolColors
         {
             if ((UnityEngine.Object)(object)spriteBundle == null)
             {
-                string text = Path.Combine(Path.Combine(Paths.PluginPath, "Extra Tool Colors"), "extra_tool_colors_sprites");
-                //Log.LogInfo("Loading AssetBundle from: " + text);
-                spriteBundle = AssetBundle.LoadFromFile(text);
-                if ((UnityEngine.Object)(object)spriteBundle == null)
+                string text = Path.Combine(Path.GetDirectoryName(PInfo.Location), "extra_tool_colors_sprites");
+                if (!File.Exists(text))
                 {
-                    Log.LogError("Could not find AssetBundle at: " + text);
+                    Log.LogError("Could not find AssetBundle at: \"" + text + "\"");
                     return;
                 }
+                //Log.LogInfo("Loading AssetBundle from: " + text);
+                spriteBundle = AssetBundle.LoadFromFile(text);
                 //Log.LogInfo("Loaded AssetBundle : " + text);
             }
             SpriteAtlas atlas = spriteBundle.LoadAsset<SpriteAtlas>("Extra Colors Sprites");
@@ -306,13 +304,27 @@ namespace ExtraToolColors
             return true;
         }
 
-        private static readonly  RuntimeAnimatorController[] toolSlotAnimatorControllers = new RuntimeAnimatorController[8];
+        private static readonly  RuntimeAnimatorController[] toolSlotAnimatorControllers = new RuntimeAnimatorController[N_TYPES];
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemTool), "SetData")]
         public static void SetDataPrefix(ref ToolItem newItemData, InventoryItemTool __instance, RuntimeAnimatorController[] ___slotAnimatorControllers)
         {
-            if (___slotAnimatorControllers.Length < 5)
+
+            /* // PREVIOUS WAY OF CHANGING TOOL TYPES
+            if (GetChangedTools().ContainsKey(newItemData.name))
+            {
+                if (!OriginalTypes.ContainsKey(newItemData.name))
+                {
+                    OriginalTypes.Add(newItemData.name, newItemData.Type);
+                }
+                ToolItemType newType = GetChangedTools()[newItemData.name];
+                if (AttackOnlyTypes.Contains(newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
+                Traverse.Create(newItemData).Field("type").SetValue((ToolItemType)newType);
+            }
+            */
+
+            if (___slotAnimatorControllers.Length < 5 && (int)newItemData.Type > 3)
             {
                 if (toolSlotAnimatorControllers[0] == null)
                 {
@@ -324,21 +336,11 @@ namespace ExtraToolColors
                 }
                 Traverse.Create(__instance).Field("slotAnimatorControllers").SetValue(toolSlotAnimatorControllers.Clone());
             }
-            if (GetChangedTools().ContainsKey(newItemData.name))
-            {
-                if (!OriginalTypes.ContainsKey(newItemData.name))
-                {
-                    OriginalTypes.Add(newItemData.name, newItemData.Type);
-                }
-                ToolItemType newType = GetChangedTools()[newItemData.name];
-                if (AttackOnlyTypes.Contains(newItemData.Type) && !AttackOnlyTypes.Contains(newType)) { return; }
-                Traverse.Create(newItemData).Field("type").SetValue((ToolItemType)newType);
-            }
         }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(InventoryItemToolManager), "GetGridSections")]
-        public static void GetGridSectionsPrefix(ref NestedFadeGroupSpriteRenderer[] ___listSectionHeaders)
+        public static void GetGridSectionsPrefix(ref NestedFadeGroupSpriteRenderer[] ___listSectionHeaders, List<ToolItem> items)
         {
             if (___listSectionHeaders.Length < 5)
             {
@@ -357,6 +359,17 @@ namespace ExtraToolColors
                     //Log.LogInfo("New List Section Header: " + newListSectionHeaders[i + 4].name);
                 }
                 ___listSectionHeaders = newListSectionHeaders;
+            }
+
+            foreach (var item in items)
+            {
+                if (GetChangedTools().ContainsKey(item.name))
+                {
+                    if (!OriginalTypes.ContainsKey(item.name)) OriginalTypes.Add(item.name, item.Type);
+                    Traverse.Create(item).Field("type").SetValue(GetChangedTools()[item.name]);
+                    //Console.WriteLine("Changed " + item.name);
+                }
+                
             }
         }
         [HarmonyPostfix]
